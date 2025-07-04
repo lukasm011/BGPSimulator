@@ -95,6 +95,26 @@ void enqueue(queue* q, Update u){
     (*q).q_tail++;
 }
 
+int queue_is_empty(queue q){
+    if(q.q_head==q.q_tail){
+        return 1;
+    }
+    else{
+        return 0;
+    }
+}
+
+void dequeue(queue* q, Update* u){
+    (*u).destination=(*q).updates[(*q).q_head].destination;
+    (*u).r.as_pathcap=(*q).updates[(*q).q_head].r.as_pathcap;
+    (*u).r.as_pathcount=(*q).updates[(*q).q_head].r.as_pathcount;
+    (*u).r.as_path=realloc((*q).updates[(*q).q_head].r.as_path, (*u).r.as_pathcap*sizeof(int));
+    (*u).r.rte_pref.prefix_len=(*q).updates[(*q).q_head].r.rte_pref.prefix_len;
+    (*u).r.rte_pref.network_address=malloc((*u).r.rte_pref.prefix_len+1);
+    strcpy((*u).r.rte_pref.network_address, (*q).updates[(*q).q_head].r.rte_pref.network_address);
+    (*q).q_head++;
+}
+
 void make_prefix(prefix *new_prefix){
     char prefixinput[17];
     int cidr, i=0, a;
