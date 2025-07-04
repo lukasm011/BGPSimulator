@@ -85,13 +85,18 @@ void add_as(AS** AS_list, int* as_list_count, int* as_list_cap){
 }
 
 void enqueue(queue* q, Update u){
+    int i=0;
     (*q).updates[(*q).q_tail].destination=u.destination;
     (*q).updates[(*q).q_tail].r.rte_pref.prefix_len=u.r.rte_pref.prefix_len;
     (*q).updates[(*q).q_tail].r.rte_pref.network_address=malloc((*q).updates[(*q).q_tail].r.rte_pref.prefix_len+1);
     strcpy((*q).updates[(*q).q_tail].r.rte_pref.network_address, u.r.rte_pref.network_address);
     (*q).updates[(*q).q_tail].r.as_pathcap=u.r.as_pathcap;
     (*q).updates[(*q).q_tail].r.as_pathcount=u.r.as_pathcount;
-    (*q).updates[(*q).q_tail].r.as_path=realloc(u.r.as_path, (*q).updates[(*q).q_tail].r.as_pathcap*sizeof(int));
+    (*q).updates[(*q).q_tail].r.as_path=malloc((*q).updates[(*q).q_tail].r.as_pathcap*sizeof(int));
+    while(i<(*q).updates[(*q).q_tail].r.as_pathcap){
+        (*q).updates[(*q).q_tail].r.as_path[i]=u.r.as_path[i];
+        i++;
+    }
     (*q).q_tail++;
 }
 
@@ -105,10 +110,16 @@ int queue_is_empty(queue q){
 }
 
 void dequeue(queue* q, Update* u){
+    int i=0;
     (*u).destination=(*q).updates[(*q).q_head].destination;
     (*u).r.as_pathcap=(*q).updates[(*q).q_head].r.as_pathcap;
     (*u).r.as_pathcount=(*q).updates[(*q).q_head].r.as_pathcount;
     (*u).r.as_path=realloc((*q).updates[(*q).q_head].r.as_path, (*u).r.as_pathcap*sizeof(int));
+    (*u).r.as_path=malloc((*u).r.as_pathcap*sizeof(int));
+    while(i<(*u).r.as_pathcount){
+        (*u).r.as_path[i]=(*q).updates[(*q).q_head].r.as_path[i];
+        i++;
+    }
     (*u).r.rte_pref.prefix_len=(*q).updates[(*q).q_head].r.rte_pref.prefix_len;
     (*u).r.rte_pref.network_address=malloc((*u).r.rte_pref.prefix_len+1);
     strcpy((*u).r.rte_pref.network_address, (*q).updates[(*q).q_head].r.rte_pref.network_address);
@@ -136,14 +147,34 @@ void make_prefix(prefix *new_prefix){
     (*new_prefix).network_address[i]='\0';
 };
 
+int as_indexfinder(int number,AS* AS_list, int as_list_count){
+    int i=0;
+    while(i<as_list_count){
+        if(AS_list[i].number==number){
+            break;
+        }
+        i++;
+    }
+    return i;
+}
+
+void load_route(Route* from, Route* to){
+    (*to).as_pathcap=(*from).as_pathcap;
+    (*to).as_pathcount=(*from).as_pathcount;
+    (*to).rte_pref.prefix_len=(*from).rte_pref.prefix_len;
+    (*to).rte_pref.network_address=malloc((*to).rte_pref.prefix_len+1);
+    strcpy((*to).rte_pref.network_address, (*from).rte_pref.network_address);
+    (*to).as_path=realloc((*from).as_path, (*to).as_pathcount+1);
+}
+
 int main(){
     AS* AS_list;
-    int as_list_count=0, as_list_cap=1;
+    int as_list_count=0, as_list_cap=1, a;
     queue q;
     q.updates=malloc(2*MAXLEN*sizeof(Update));
     q.q_head=0;
     q.q_tail=0;
-    Update origin;
+    Update origin, u;
     origin.r.as_pathcap=1;
     origin.r.as_pathcount=0;
     origin.r.as_path=malloc(origin.r.as_pathcap*sizeof(int));
@@ -160,6 +191,11 @@ int main(){
         else{
             break;
         }
+    }
+    while(!queue_is_empty(q)){
+        dequeue(&q, &u);
+        a=as_indexfinder(u.destination, AS_list, as_list_count);
+        load_route(&(u.r), &(AS_list[a].adj_rib.rte_list[AS_list[a].adj_rib.rib_count]));
     }
     printf("%s", q.updates[2].r.rte_pref.network_address);
     return 0;
