@@ -114,7 +114,6 @@ void dequeue(queue* q, Update* u){
     (*u).destination=(*q).updates[(*q).q_head].destination;
     (*u).r.as_pathcap=(*q).updates[(*q).q_head].r.as_pathcap;
     (*u).r.as_pathcount=(*q).updates[(*q).q_head].r.as_pathcount;
-    (*u).r.as_path=realloc((*q).updates[(*q).q_head].r.as_path, (*u).r.as_pathcap*sizeof(int));
     (*u).r.as_path=malloc((*u).r.as_pathcap*sizeof(int));
     while(i<(*u).r.as_pathcount){
         (*u).r.as_path[i]=(*q).updates[(*q).q_head].r.as_path[i];
@@ -159,12 +158,40 @@ int as_indexfinder(int number,AS* AS_list, int as_list_count){
 }
 
 void load_route(Route* from, Route* to){
+    int i=0;
     (*to).as_pathcap=(*from).as_pathcap;
     (*to).as_pathcount=(*from).as_pathcount;
     (*to).rte_pref.prefix_len=(*from).rte_pref.prefix_len;
     (*to).rte_pref.network_address=malloc((*to).rte_pref.prefix_len+1);
     strcpy((*to).rte_pref.network_address, (*from).rte_pref.network_address);
-    (*to).as_path=realloc((*from).as_path, (*to).as_pathcount+1);
+    (*to).as_path=malloc((*to).as_pathcount*sizeof(int));
+    while(i<(*to).as_pathcount){
+        (*to).as_path[i]=(*from).as_path[i];
+        i++;
+    }
+}
+
+void delete_route(RIB* rib, int index){
+    free((*rib).rte_list[index].rte_pref.network_address);
+    (*rib).rte_list[index].rte_pref.prefix_len=0;
+    (*rib).rte_list[index].as_path=realloc((*rib).rte_list[index].as_path, sizeof(int));
+    (*rib).rte_list[index].as_pathcount=0;
+    (*rib).rte_list[index].as_pathcap=1;
+    (*rib).rib_count--;
+}
+
+void evaluate_route(AS** AS_list, int as_list_count, int target){
+    int i=0, c=0;
+    while(c<(*AS_list)[target].adj_rib.rib_count){
+        i=0;
+        while(i<(*AS_list)[target].loc_rib.rib_count){
+            if(strcmp((*AS_list)[target].adj_rib.rte_list[c].rte_pref, (*AS_list)[target].loc_rib.rte_list[i].rte_pref)==0 && (*AS_list)[target].adj_rib.rte_list[c].as_pathcount<(*AS_list)[target].loc_rib.rte_list[i].as_pathcount){
+                //first delete route from loc_rib and out_rib, add current AS to as_path, then add the route from adj_rib into them. push the out_rib content to all neighbours.
+            }
+            i++;
+        }
+        c++;
+    }
 }
 
 int main(){
