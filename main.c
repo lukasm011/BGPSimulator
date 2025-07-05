@@ -181,12 +181,24 @@ void delete_route(RIB* rib, int index){
 }
 
 void evaluate_route(AS** AS_list, int as_list_count, int target){
-    int i=0, c=0;
+    int i=0, c=0, a=0;
     while(c<(*AS_list)[target].adj_rib.rib_count){
         i=0;
         while(i<(*AS_list)[target].loc_rib.rib_count){
-            if(strcmp((*AS_list)[target].adj_rib.rte_list[c].rte_pref, (*AS_list)[target].loc_rib.rte_list[i].rte_pref)==0 && (*AS_list)[target].adj_rib.rte_list[c].as_pathcount<(*AS_list)[target].loc_rib.rte_list[i].as_pathcount){
-                //first delete route from loc_rib and out_rib, add current AS to as_path, then add the route from adj_rib into them. push the out_rib content to all neighbours.
+            if(strcmp((*AS_list)[target].adj_rib.rte_list[c].rte_pref.network_address, (*AS_list)[target].loc_rib.rte_list[i].rte_pref.network_address)==0 && (*AS_list)[target].adj_rib.rte_list[c].as_pathcount<(*AS_list)[target].loc_rib.rte_list[i].as_pathcount){
+                delete_route(&((*AS_list)[target].loc_rib), i);
+                (*AS_list)[target].adj_rib.rte_list[c].as_path[(*AS_list)[target].adj_rib.rte_list[c].as_pathcount]=(*AS_list)[target].number;
+                while(a<(*AS_list)[target].out_rib.rib_count){
+                    if(strcmp((*AS_list)[target].adj_rib.rte_list[c].rte_pref.network_address, (*AS_list)[target].out_rib.rte_list[a].rte_pref.network_address)==0){
+                        delete_route(&((*AS_list)[target].out_rib), a);
+                        break;
+                    }
+                    a++;
+                }
+                load_route(&((*AS_list)[target].adj_rib.rte_list[c]), &((*AS_list)[target].loc_rib.rte_list[(*AS_list)[target].loc_rib.rib_count]));
+                load_route(&((*AS_list)[target].adj_rib.rte_list[c]), &((*AS_list)[target].out_rib.rte_list[(*AS_list)[target].out_rib.rib_count]));
+                delete_route(&((*AS_list)[target].adj_rib), c);
+                //LAST delete route from loc_rib and out_rib, first add current AS to as_path, add the route from adj_rib into them. push the out_rib content to all neighbours.
             }
             i++;
         }
