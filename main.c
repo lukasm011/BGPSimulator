@@ -3,6 +3,8 @@
 #include <string.h>
 #define MAXLEN 100
 #define MAXUPDT 256
+#define ANSI_RED     "\x1b[31m"
+#define ANSI_RESET   "\x1b[0m"
 
 typedef struct{
     char* network_address;
@@ -172,43 +174,140 @@ void load_route(Route* from, Route* to){
 }
 
 void delete_route(RIB* rib, int index){
-    free((*rib).rte_list[index].rte_pref.network_address);
-    (*rib).rte_list[index].rte_pref.prefix_len=0;
-    (*rib).rte_list[index].as_path=realloc((*rib).rte_list[index].as_path, sizeof(int));
-    (*rib).rte_list[index].as_pathcount=0;
-    (*rib).rte_list[index].as_pathcap=1;
-    (*rib).rib_count--;
+    int i=index+1;
+    //if the route is the last one in the RIB there is nothing to shift down.
+    if(index+1==(*rib).rib_count){
+        free((*rib).rte_list[index].rte_pref.network_address);
+        (*rib).rte_list[index].rte_pref.prefix_len=0;
+        (*rib).rte_list[index].as_path=realloc((*rib).rte_list[index].as_path, sizeof(int));
+        (*rib).rte_list[index].as_pathcount=0;
+        (*rib).rte_list[index].as_pathcap=1;
+        (*rib).rib_count--;
+    }
+    //if not, shift everything down.
+    else{
+        while(i<(*rib).rib_count){
+            load_route(&((*rib).rte_list[i]), &((*rib).rte_list[index]));
+            index++;
+            i++;
+        }
+    }
 }
 
-void evaluate_route(AS** AS_list, int as_list_count, int target){
-    int i=0, c=0, a=0;
+void evaluate_route(AS** AS_list, int as_list_count, int target, queue* q){
+    int i=0, c=0, a=0, flag=0, b_flag=0;
+    //flag=1 means that the prefix is not yet known by the AS. The loop starts under the assumption that the AS knows, if it loops through all loc_rib elements without finding the prefix, the flag is turned to 1.
+    Update u;
+    //LOADING IF adj_rib COUNT IS >0
+
+    c=0;
+
     while(c<(*AS_list)[target].adj_rib.rib_count){
         i=0;
+        flag=0;
         while(i<(*AS_list)[target].loc_rib.rib_count){
-            if(strcmp((*AS_list)[target].adj_rib.rte_list[c].rte_pref.network_address, (*AS_list)[target].loc_rib.rte_list[i].rte_pref.network_address)==0 && (*AS_list)[target].adj_rib.rte_list[c].as_pathcount<(*AS_list)[target].loc_rib.rte_list[i].as_pathcount){
-                delete_route(&((*AS_list)[target].loc_rib), i);
-                (*AS_list)[target].adj_rib.rte_list[c].as_path[(*AS_list)[target].adj_rib.rte_list[c].as_pathcount]=(*AS_list)[target].number;
-                while(a<(*AS_list)[target].out_rib.rib_count){
-                    if(strcmp((*AS_list)[target].adj_rib.rte_list[c].rte_pref.network_address, (*AS_list)[target].out_rib.rte_list[a].rte_pref.network_address)==0){
-                        delete_route(&((*AS_list)[target].out_rib), a);
-                        break;
-                    }
-                    a++;
-                }
-                load_route(&((*AS_list)[target].adj_rib.rte_list[c]), &((*AS_list)[target].loc_rib.rte_list[(*AS_list)[target].loc_rib.rib_count]));
-                load_route(&((*AS_list)[target].adj_rib.rte_list[c]), &((*AS_list)[target].out_rib.rte_list[(*AS_list)[target].out_rib.rib_count]));
-                delete_route(&((*AS_list)[target].adj_rib), c);
-                //LAST delete route from loc_rib and out_rib, first add current AS to as_path, add the route from adj_rib into them. push the out_rib content to all neighbours.
+            if(strcmp((*AS_list)[target].adj_rib.rte_list[c].rte_pref.network_address, (*AS_list)[target].loc_rib.rte_list[i].rte_pref.network_address)==0){
+                flag=1;
             }
             i++;
         }
+        if(flag==0){
+            if((*AS_list)[target].adj_rib.rte_list[c].as_pathcount==(*AS_list)[target].adj_rib.rte_list[c].as_pathcap){
+                    (*AS_list)[target].adj_rib.rte_list[c].as_pathcap=(*AS_list)[target].adj_rib.rte_list[c].as_pathcap*2;
+                    (*AS_list)[target].adj_rib.rte_list[c].as_path=realloc((*AS_list)[target].adj_rib.rte_list[c].as_path, (*AS_list)[target].adj_rib.rte_list[c].as_pathcap*sizeof(int));
+            }
+            (*AS_list)[target].adj_rib.rte_list[c].as_path[(*AS_list)[target].adj_rib.rte_list[c].as_pathcount]=(*AS_list)[target].number;
+            (*AS_list)[target].adj_rib.rte_list[c].as_pathcount++;
+            if((*AS_list)[target].loc_rib.rib_count==(*AS_list)[target].loc_rib.rib_cap){
+                (*AS_list)[target].loc_rib.rib_cap=(*AS_list)[target].loc_rib.rib_cap*2;
+                (*AS_list)[target].loc_rib.rte_list=realloc((*AS_list)[target].loc_rib.rte_list, (*AS_list)[target].loc_rib.rib_cap*sizeof(Route));
+            }
+            if((*AS_list)[target].out_rib.rib_count==(*AS_list)[target].out_rib.rib_cap){
+                (*AS_list)[target].out_rib.rib_cap=(*AS_list)[target].out_rib.rib_cap*2;
+                (*AS_list)[target].out_rib.rte_list=realloc((*AS_list)[target].out_rib.rte_list, (*AS_list)[target].out_rib.rib_cap*sizeof(Route));
+            }
+            load_route(&((*AS_list)[target].adj_rib.rte_list[c]), &((*AS_list)[target].loc_rib.rte_list[(*AS_list)[target].loc_rib.rib_count]));
+            load_route(&((*AS_list)[target].adj_rib.rte_list[c]), &((*AS_list)[target].out_rib.rte_list[(*AS_list)[target].out_rib.rib_count]));
+            (*AS_list)[target].loc_rib.rib_count++;
+            (*AS_list)[target].out_rib.rib_count++;
+            a=0;
+            while(a<(*AS_list)[target].neighbour_count){
+                u.destination=(*AS_list)[target].neighbours[a];
+                load_route(&((*AS_list)[target].out_rib.rte_list[(*AS_list)[target].out_rib.rib_count-1]), &(u.r));
+                enqueue(q, u);
+                printf("+++Sent route (new)+++\nTO PREFIX %s\nNOW KNOWN BY AS%d\n",u.r.rte_pref.network_address, u.destination);
+                a++;
+            }
+            delete_route(&((*AS_list)[target].adj_rib), c);
+        }
+        else{
+            i=0;
+            while(i<(*AS_list)[target].loc_rib.rib_count){
+                if(strcmp((*AS_list)[target].adj_rib.rte_list[c].rte_pref.network_address, (*AS_list)[target].loc_rib.rte_list[i].rte_pref.network_address)==0 && (*AS_list)[target].adj_rib.rte_list[c].as_pathcount<(*AS_list)[target].loc_rib.rte_list[i].as_pathcount){
+                    delete_route(&((*AS_list)[target].loc_rib), i);
+                    if((*AS_list)[target].adj_rib.rte_list[c].as_pathcount==(*AS_list)[target].adj_rib.rte_list[c].as_pathcap){
+                        (*AS_list)[target].adj_rib.rte_list[c].as_pathcap=(*AS_list)[target].adj_rib.rte_list[c].as_pathcap*2;
+                        (*AS_list)[target].adj_rib.rte_list[c].as_path=realloc((*AS_list)[target].adj_rib.rte_list[c].as_path, (*AS_list)[target].adj_rib.rte_list[c].as_pathcap*sizeof(int));
+                    }
+                    (*AS_list)[target].adj_rib.rte_list[c].as_path[(*AS_list)[target].adj_rib.rte_list[c].as_pathcount]=(*AS_list)[target].number;
+                    (*AS_list)[target].adj_rib.rte_list[c].as_pathcount++;
+                    a=0;
+                    while(a<(*AS_list)[target].out_rib.rib_count){
+                        if(strcmp((*AS_list)[target].adj_rib.rte_list[c].rte_pref.network_address, (*AS_list)[target].out_rib.rte_list[a].rte_pref.network_address)==0){
+                            delete_route(&((*AS_list)[target].out_rib), a);
+                            break;
+                        }
+                        a++;
+                    }
+                    if((*AS_list)[target].loc_rib.rib_count==(*AS_list)[target].loc_rib.rib_cap){
+                        (*AS_list)[target].loc_rib.rib_cap=(*AS_list)[target].loc_rib.rib_cap*2;
+                        (*AS_list)[target].loc_rib.rte_list=realloc((*AS_list)[target].loc_rib.rte_list, (*AS_list)[target].loc_rib.rib_cap*sizeof(Route));
+                    }
+                    if((*AS_list)[target].out_rib.rib_count==(*AS_list)[target].out_rib.rib_cap){
+                        (*AS_list)[target].out_rib.rib_cap=(*AS_list)[target].out_rib.rib_cap*2;
+                        (*AS_list)[target].out_rib.rte_list=realloc((*AS_list)[target].out_rib.rte_list, (*AS_list)[target].out_rib.rib_cap*sizeof(Route));
+                    }
+                    load_route(&((*AS_list)[target].adj_rib.rte_list[c]), &((*AS_list)[target].loc_rib.rte_list[(*AS_list)[target].loc_rib.rib_count]));
+                    load_route(&((*AS_list)[target].adj_rib.rte_list[c]), &((*AS_list)[target].out_rib.rte_list[(*AS_list)[target].out_rib.rib_count]));
+                    (*AS_list)[target].loc_rib.rib_count++;
+                    (*AS_list)[target].out_rib.rib_count++;
+                    a=0;
+                    while(a<(*AS_list)[target].neighbour_count){
+                        u.destination=(*AS_list)[target].neighbours[a];
+                        load_route(&((*AS_list)[target].out_rib.rte_list[(*AS_list)[target].out_rib.rib_count-1]), &(u.r));
+                        enqueue(q, u);
+                        printf("+++Sent route (better)+++\nTO PREFIX %s\nNOW KNOWN BY AS%d\n",u.r.rte_pref.network_address, u.destination);
+                        a++;
+                    }
+                    delete_route(&((*AS_list)[target].adj_rib), c);
+                    //LAST delete route from loc_rib and out_rib, first add current AS to as_path, add the route from adj_rib into them. push the out_rib content to all neighbours.
+                }
+                i++;
+            }
+        }
         c++;
+    }
+    //LOADING IF NOT
+    if((*AS_list)[target].loc_rib.rib_count==0){
+        (*AS_list)[target].adj_rib.rte_list[0].as_path[(*AS_list)[target].adj_rib.rte_list[0].as_pathcount]=(*AS_list)[target].number;
+        load_route(&((*AS_list)[target].adj_rib.rte_list[0]), &((*AS_list)[target].loc_rib.rte_list[(*AS_list)[target].loc_rib.rib_count]));
+        load_route(&((*AS_list)[target].adj_rib.rte_list[0]), &((*AS_list)[target].out_rib.rte_list[(*AS_list)[target].out_rib.rib_count]));
+        (*AS_list)[target].loc_rib.rib_count++;
+        (*AS_list)[target].out_rib.rib_count++;
+        a=0;
+        while(a<(*AS_list)[target].neighbour_count){
+            u.destination=(*AS_list)[target].neighbours[a];
+            load_route(&((*AS_list)[target].out_rib.rte_list[(*AS_list)[target].out_rib.rib_count-1]), &(u.r));
+            enqueue(q, u);
+            a++;
+        }
+        delete_route(&((*AS_list)[target].adj_rib), 0);
     }
 }
 
 int main(){
     AS* AS_list;
-    int as_list_count=0, as_list_cap=1, a;
+    int as_list_count=0, as_list_cap=1, a=0, b=0, c=0;
     queue q;
     q.updates=malloc(2*MAXLEN*sizeof(Update));
     q.q_head=0;
@@ -225,6 +324,7 @@ int main(){
             origin.destination=AS_list[as_list_count-1].number;
             make_prefix(&(origin.r.rte_pref));
             enqueue(&q, origin);
+            printf("+++Sent route (origin)+++\nTO PREFIX %s\nNOW KNOWN BY AS%d\n",origin.r.rte_pref.network_address, origin.destination);
             while (getchar() != '\n');
         }
         else{
@@ -234,8 +334,28 @@ int main(){
     while(!queue_is_empty(q)){
         dequeue(&q, &u);
         a=as_indexfinder(u.destination, AS_list, as_list_count);
+        if(AS_list[a].adj_rib.rib_count==AS_list[a].adj_rib.rib_cap){
+            AS_list[a].adj_rib.rib_cap=AS_list[a].adj_rib.rib_cap*2;
+            AS_list[a].adj_rib.rte_list=realloc(AS_list[a].adj_rib.rte_list, AS_list[a].adj_rib.rib_cap*sizeof(Route));
+        }
         load_route(&(u.r), &(AS_list[a].adj_rib.rte_list[AS_list[a].adj_rib.rib_count]));
+        AS_list[a].adj_rib.rib_count++;
+        evaluate_route(&(AS_list), as_list_count, a, &q);
     }
-    printf("%s", q.updates[2].r.rte_pref.network_address);
+    a=0;
+    while(a<as_list_count){
+        b=0;
+        while(b<AS_list[a].loc_rib.rib_count){
+            printf("+++AS%d can reach prefix %s It will route via:+++\n",AS_list[a].number ,AS_list[a].loc_rib.rte_list[b].rte_pref.network_address);
+            c=0;
+            while(c<AS_list[a].loc_rib.rte_list[b].as_pathcount){
+                printf("%d:AS%d\n", c, AS_list[a].loc_rib.rte_list[b].as_path[c]);
+                c++;
+            }
+            printf("++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+            b++;
+        }
+        a++;
+    }
     return 0;
 }
