@@ -47,7 +47,6 @@ typedef struct{
 
 void add_as(AS** AS_list, int* as_list_count, int* as_list_cap){
     int destination;
-    char flush;
     if(*as_list_count==*as_list_cap){
         *as_list_cap=*as_list_cap*2;
         *AS_list=realloc(*AS_list, *as_list_cap*sizeof(AS));
@@ -144,8 +143,8 @@ void make_prefix(prefix *new_prefix){
     }
     (*new_prefix).prefix_len=i;
     (*new_prefix).network_address=malloc(i+1);
-    strcpy((*new_prefix).network_address, prefixinput);
-    (*new_prefix).network_address[i]='\0';
+    memcpy(new_prefix->network_address, prefixinput, i);
+    new_prefix->network_address[i] = '\0';
 };
 
 int as_indexfinder(int number,AS* AS_list, int as_list_count){
@@ -235,7 +234,7 @@ void evaluate_route(AS** AS_list, int as_list_count, int target, queue* q){
                 u.destination=(*AS_list)[target].neighbours[a];
                 load_route(&((*AS_list)[target].out_rib.rte_list[(*AS_list)[target].out_rib.rib_count-1]), &(u.r));
                 enqueue(q, u);
-                printf("+++Sent route (new)+++\nTO PREFIX %s\nNOW KNOWN BY AS%d\n",u.r.rte_pref.network_address, u.destination);
+                //printf("+++Sent route (new)+++\nTO PREFIX %s\nNOW KNOWN BY AS%d\n",u.r.rte_pref.network_address, u.destination);
                 a++;
             }
             delete_route(&((*AS_list)[target].adj_rib), c);
@@ -276,7 +275,7 @@ void evaluate_route(AS** AS_list, int as_list_count, int target, queue* q){
                         u.destination=(*AS_list)[target].neighbours[a];
                         load_route(&((*AS_list)[target].out_rib.rte_list[(*AS_list)[target].out_rib.rib_count-1]), &(u.r));
                         enqueue(q, u);
-                        printf("+++Sent route (better)+++\nTO PREFIX %s\nNOW KNOWN BY AS%d\n",u.r.rte_pref.network_address, u.destination);
+                        //printf("+++Sent route (better)+++\nTO PREFIX %s\nNOW KNOWN BY AS%d\n",u.r.rte_pref.network_address, u.destination);
                         a++;
                     }
                     delete_route(&((*AS_list)[target].adj_rib), c);
@@ -305,6 +304,55 @@ void evaluate_route(AS** AS_list, int as_list_count, int target, queue* q){
     }
 }
 
+void find_path(AS* AS_list, int AS_list_count){
+    char departure_input[16];
+    char destination_input[16];
+    char temp[17];
+    int i=0, c, departure_index, destination_index;
+    printf("Starting network address: ");
+    scanf("%15s", departure_input);
+    while(i<AS_list_count){
+        c=0;
+        while(c<AS_list[i].loc_rib.rib_count){
+            if(AS_list[i].loc_rib.rte_list[c].as_pathcount==1){
+                strcpy(temp, departure_input);
+                temp[AS_list[i].loc_rib.rte_list[c].rte_pref.prefix_len]='\0';
+                if(strcmp(temp, AS_list[i].loc_rib.rte_list[c].rte_pref.network_address)==0){
+                    departure_index=i;
+                    c=AS_list[i].loc_rib.rib_count;
+                }
+            }
+            c++;
+        }
+        i++;
+    }
+    printf("Enter destination network address: ");
+    scanf("%15s", destination_input);
+    i=0;
+    c=0;
+    while(c<AS_list[departure_index].loc_rib.rib_count){
+            strcpy(temp, destination_input);
+            temp[AS_list[departure_index].loc_rib.rte_list[c].rte_pref.prefix_len]='\0';
+            if(strcmp(temp, AS_list[departure_index].loc_rib.rte_list[c].rte_pref.network_address)==0){
+                if(AS_list[departure_index].loc_rib.rte_list[c].as_pathcount==1){
+                    printf("The connection will not leave the AS.");
+                }
+                else{
+                    printf("+++PATH IS+++\n");
+                    i=1;
+                    while(i<AS_list[departure_index].loc_rib.rte_list[c].as_pathcount+1){
+                        printf("%d: AS%d\n", i, AS_list[departure_index].loc_rib.rte_list[c].as_path[AS_list[departure_index].loc_rib.rte_list[c].as_pathcount-i]);
+                        i++;
+                    }
+                    printf("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+                }
+                c=AS_list[departure_index].loc_rib.rib_count;
+            }
+        c++;
+    }
+
+}
+
 int main(){
     AS* AS_list;
     int as_list_count=0, as_list_cap=1, a=0, b=0, c=0;
@@ -324,7 +372,7 @@ int main(){
             origin.destination=AS_list[as_list_count-1].number;
             make_prefix(&(origin.r.rte_pref));
             enqueue(&q, origin);
-            printf("+++Sent route (origin)+++\nTO PREFIX %s\nNOW KNOWN BY AS%d\n",origin.r.rte_pref.network_address, origin.destination);
+            //printf("+++Sent route (origin)+++\nTO PREFIX %s\nNOW KNOWN BY AS%d\n",origin.r.rte_pref.network_address, origin.destination);
             while (getchar() != '\n');
         }
         else{
@@ -343,10 +391,11 @@ int main(){
         evaluate_route(&(AS_list), as_list_count, a, &q);
     }
     a=0;
-    while(a<as_list_count){
+    find_path(AS_list, as_list_count);
+    /*while(a<as_list_count){
         b=0;
         while(b<AS_list[a].loc_rib.rib_count){
-            printf("+++AS%d can reach prefix %s It will route via:+++\n",AS_list[a].number ,AS_list[a].loc_rib.rte_list[b].rte_pref.network_address);
+            printf("+++AS%d can reach prefix %s (with len %d) It will route via:+++\n",AS_list[a].number ,AS_list[a].loc_rib.rte_list[b].rte_pref.network_address, AS_list[a].loc_rib.rte_list[b].rte_pref.prefix_len);
             c=0;
             while(c<AS_list[a].loc_rib.rte_list[b].as_pathcount){
                 printf("%d:AS%d\n", c, AS_list[a].loc_rib.rte_list[b].as_path[c]);
@@ -356,6 +405,6 @@ int main(){
             b++;
         }
         a++;
-    }
+    }*/
     return 0;
 }
